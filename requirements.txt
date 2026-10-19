@@ -1,0 +1,25 @@
+ollama
+google.genai
+openai
+
+pdf2image 
+pypdf
+pillow
+pandas
+
+streamlit
+streamlit_player
+streamlit-calendar
+
+youtube_transcript_api
+psutil # maybe not used
+
+langchain 
+langchain-community
+langchain-openai
+langchain-huggingface 
+langchain-ollama 
+langchain-chroma
+chromadb 
+tiktoken
+trafilatura
