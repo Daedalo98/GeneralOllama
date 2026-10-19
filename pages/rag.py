@@ -372,7 +372,7 @@ if st.button("🔍 Execute Advanced Search", type="primary", width="stretch", di
 
             st.markdown(f"### 📄 Source: `{filename}`")
             
-            with st.expander(f"👁️ View Entire Document ({len(chunks_data)} retrieved chunks highlighted)"):
+            with st.expander(f"👁️ View Entire Document with ({len(chunks_data)} retrieved chunks highlighted)"):
                 try:
                     with open(source_path, 'r', encoding='utf-8') as f:
                         full_text = f.read()
@@ -414,15 +414,3 @@ if st.button("🔍 Execute Advanced Search", type="primary", width="stretch", di
                 # CALL FRAGMENT (No duplicate UI elements!)
                 # functions.render_chunk_ui(doc, score, real_metadata, citation_text, filename, chunk_index)
                 chunk_index += 1
-
-        # --- FOOTER FOR STEP 3 ---
-        st.divider()
-        st.info("💡 Because editing chunks is isolated for smooth typing, you must lock your selections to update the final step.")
-        
-        # This button forces the whole page to refresh, unlocking Step 4
-        if st.button("Lock Curated Context & Proceed to Synthesis ➡️", type="primary", width='stretch'):
-            st.rerun()
-            
-        # This will now correctly display after the rerun
-        if st.session_state.curated_contexts:
-            st.success(f"🎉 **Ready for Generation:** You have curated {len(st.session_state.curated_contexts)} chunks of context.")

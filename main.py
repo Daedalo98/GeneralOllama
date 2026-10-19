@@ -162,7 +162,7 @@ pg = st.navigation([
     st.Page("./pages/settings.py", title="Settings", icon="⚙️"),
     st.Page("./pages/ollamachat.py", title="Ollama Chat", icon="🦙"), 
     st.Page("./pages/youtube.py", title="YouTube", icon="🎞️"),
-    st.Page("./pages/pdfs.py", title="PDF manager", icon="📜"),
+    st.Page("./pages/zotero.py", title="Zotero", icon="📜"),
     st.Page("./pages/quiz.py", title="Quiz Time", icon="❓"),
     st.Page("./pages/parsing.py", title="Parsing", icon="📖"),
     st.Page("./pages/rag.py", title="RAG", icon="🛸"),

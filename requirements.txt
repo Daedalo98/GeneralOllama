@@ -23,3 +23,5 @@ langchain-chroma
 chromadb 
 tiktoken
 trafilatura
+
+pyzotero

@@ -624,7 +624,7 @@ with st.sidebar:
     )
 
     # Reset sample events
-    if st.button("Reset sample events", use_container_width=True):
+    if st.button("Reset sample events", width="stretch"):
         st.session_state.events = copy.deepcopy(SAMPLE_EVENTS)
         save_events(st.session_state.events)
         st.session_state.selected_event = None
