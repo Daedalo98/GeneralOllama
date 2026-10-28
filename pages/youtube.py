@@ -280,7 +280,8 @@ if "metadata" in st.session_state and st.session_state.metadata and st.session_s
                 f"Title: {meta.get('title', 'Unknown')}\n"
                 f"Author: {meta.get('author_name', 'Unknown')}\n"
                 f"Date: {meta.get('upload_date', 'Unknown')}\n"
-                f"URL: {meta.get('video_url', 'Unknown')}\n\n"
+                f"URL: {meta.get('video_url', 'Unknown')}\n"
+                f"--- METADATA ---\n\n"
             )
             st.session_state.thinking_text = ""
 

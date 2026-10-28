@@ -140,12 +140,14 @@ def get_selected_pdfs(file_or_list, pdf_folder, isfile):
     source_root = Path(pdf_folder).expanduser().resolve()
 
     selected_paths = []
+    sources = []
 
     for record in records:
         if not record.get("selected", False):
             continue
 
         relative_path = Path(record["pdf_path"])
+        source = record["Source"]
 
         # Inventory paths should be relative, never absolute.
         if relative_path.is_absolute():
@@ -162,8 +164,9 @@ def get_selected_pdfs(file_or_list, pdf_folder, isfile):
             continue
 
         selected_paths.append(pdf_path)
+        sources.append(source)
 
-    return selected_paths
+    return selected_paths, sources
 
 
 # main parameters
@@ -371,6 +374,7 @@ st.caption(
 display_columns = [
     "Select",
     "File name",
+    "Source (DOI or URL)", ###
     "Relative path",
     "Pages",
     "PDF status",
@@ -378,16 +382,22 @@ display_columns = [
     "Markdown path",
 ]
 
+cols_to_select = [c for c in display_columns + ["_key"] if c in visible.columns]
+
 edited = st.data_editor(
-    visible[display_columns + ["_key"]],
+    visible[cols_to_select],
     hide_index=True,
     width="stretch",
-    disabled=[column for column in display_columns if column != "Select"]
+    disabled=[column for column in display_columns if column not in ["Select", "Source (DOI or URL)"]]
     + ["_key"],
     column_config={
         "Select": st.column_config.CheckboxColumn(
             "Select for parsing",
             help="This only controls selection; it does not start parsing.",
+        ),
+        "Source (DOI or URL)": st.column_config.TextColumn(
+            "Add source for future references",
+            help="Manually add source now, so later it will be automatically referenced."
         ),
         "Pages": st.column_config.NumberColumn("Pages", format="%d"),
         "_key": None,
@@ -409,6 +419,8 @@ st.write(f"{len(selected_rows)} files · {int(selected_rows['Pages'].dropna().su
 if selected_rows.empty:
     st.write("No files are selected.")
     st.write("Import JSON file or select rows to start parsing.")
+    selection_upload = None
+    selected_pdfs = None
 
 else:
     st.dataframe(
@@ -425,6 +437,7 @@ else:
             "pages": row["Pages"] if pd.notna(row["Pages"]) else None,
             "parse_status": row["Parse status"],
             "markdown_path": row["Markdown path"],
+            "Source": row["Source (DOI or URL)"]
         }
         for _, row in inventory.iterrows()
     ]
@@ -453,21 +466,21 @@ else:
 # =========================================================
 if selection_upload is None:
     try:
-        selected_pdfs = get_selected_pdfs(export_rows, PDF_FOLDER, isfile=False)
+        selected_pdfs, sources = get_selected_pdfs(export_rows, PDF_FOLDER, isfile=False)
     except Exception as e:
         st.warning(f"no file uploaded and no selected pdf, error: {e}")
 
 else:
     try:
-        selected_pdfs = get_selected_pdfs(selection_upload, PDF_FOLDER, isfile=True)
+        selected_pdfs, sources = get_selected_pdfs(selection_upload, PDF_FOLDER, isfile=True)
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         st.error(f"Could not read the selection file: {exc}")
         selected_pdfs = []
 
-st.write(f"Selected PDFs: {len(selected_pdfs)}")
-
-for pdf_path in selected_pdfs:
-    st.write(pdf_path.relative_to(Path(PDF_FOLDER).expanduser().resolve()))
+if selected_pdfs is not None:
+    st.write(f"Selected PDFs: {len(selected_pdfs)}")
+    for pdf_path in selected_pdfs:
+        st.write(pdf_path.relative_to(Path(PDF_FOLDER).expanduser().resolve()))
 
 if st.session_state.context_length < 96000:
     st.warning("Parsing require a big context lenght for optimal results. min 112k is suggested.")
@@ -487,7 +500,7 @@ if st.button(
 
         # Save paths in session state. Streamlit reruns the script after
         # interactions, so don't rely on a local variable from a previous run.
-        st.session_state.parse_queue = [str(path) for path in selected_pdfs]
+        st.session_state.parse_queue = [[str(path), source] for [path, source] in [selected_pdfs, sources]]
 
         functions.add_log(f"selected {len(selected_pdfs)} PDF file(s)")
         functions.add_log("parsing process started.")

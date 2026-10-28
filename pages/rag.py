@@ -21,6 +21,8 @@ DB_PATH = st.session_state.folder_paths["DB_FOLDER"]
 # =========================================================
 # RAG CHAT SESSION    
 # =========================================================
+if "rag_config" not in st.session_state:
+    st.session_state.rag_config = {}
 
 if "query_text" not in st.session_state:
     st.session_state.query_text = ""
@@ -37,7 +39,7 @@ if "vector_db" not in st.session_state:
 with st.sidebar:
     with st.container(border=False):   
         with st.expander("📚 RAG settings", expanded=True):
-            embedding_idx = ollama_models.index("nomic-embed-text-v2-moe") if "nomic-embed-text-v2-moe" in ollama_models else 0
+            embedding_idx = ollama_models.index("nomic-embed-text-v2-moe:latest") if "nomic-embed-text-v2-moe:latest" in ollama_models else 0
             embedding_model = st.selectbox("Embedding Model", ollama_models, index=embedding_idx)
             st.session_state.rag_config['embedding_model'] = embedding_model
             
@@ -332,11 +334,8 @@ if st.button("🔍 Execute Advanced Search", type="primary", width="stretch", di
     # --- RESULTS & INTERACTIVE CURATION UI ---
     if 'retrieval_results' in st.session_state and st.session_state.retrieval_results:
         st.divider()
-        st.subheader("📚 Curate Retrieved Context & Citations")
+        st.subheader("📚 Retrieved Context")
         
-        if 'curated_contexts' not in st.session_state:
-            st.session_state.curated_contexts = {}
-
         grouped_docs = {}
         for doc, score in st.session_state.retrieval_results:
             src = doc.metadata.get('source', 'Unknown')

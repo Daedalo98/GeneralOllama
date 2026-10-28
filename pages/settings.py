@@ -155,11 +155,20 @@ with st.container(border=False):
         # Display existing prompts
         for prompt_name, prompt_text in prompts_dict.items():
             with st.container():
-                st.text_area(f"{prompt_name}", value=prompt_text, key=f"edit_{prompt_name}")
-                if st.button(f"Delete {prompt_name}", key=f"delete_{prompt_name}"):
-                    del prompts_dict[prompt_name]
-                    functions.save_prompt(PROMPTS_FILE, prompts_dict, prompt_text)
-                    st.experimental_rerun()
+                st.markdown("---")
+                prompt_text = st.text_area(f"{prompt_name}", value=prompt_text, key=f"edit_{prompt_name}", height="content")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Save modified prompt", key=f"save_{prompt_name}", width="stretch"):
+                        functions.save_prompt(PROMPTS_FILE, prompt_name, prompt_text)
+                        st.rerun()
+
+                with col2:
+                    if st.button(f"Delete {prompt_name}", key=f"delete_{prompt_name}", type="primary", width="stretch"):
+                        del prompts_dict[prompt_name]
+                        functions.save_prompt(PROMPTS_FILE, prompts_dict, prompt_text)
+                        st.rerun()
 
         # Add new prompt
         new_prompt_name = st.text_input("New Prompt Name", key="new_prompt_name")

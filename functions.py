@@ -989,3 +989,148 @@ def render_chunk_ui(
         }
     else:
         st.session_state.curated_contexts.pop(c_idx, None)
+
+
+## --- quiz utils ---
+
+def validate_questions(raw_response):
+    """
+    Convert an LLM response into a validated list of questions.
+
+    Raises an exception if the response is not valid JSON
+    or does not contain the expected question structure.
+    """
+
+    # Stage 1: Verify that the entire response is valid JSON.
+    data = json.loads(raw_response)
+
+    # Stage 2: The top-level object must be a list.
+    if not isinstance(data, list):
+        # raise ValueError("Expected a JSON list of questions.")
+        return None
+
+    # An empty list is not a useful result for this application.
+    if not data:
+        # raise ValueError("The model returned no questions.")
+        return None
+
+    for index, item in enumerate(data, start=1):
+
+        # Each question must be represented by an object.
+        if not isinstance(item, dict):
+            return None
+
+        # Each object must contain a nonempty question string.
+        question = item.get("question")
+
+        if not isinstance(question, str) or not question.strip():
+            return None
+
+    # Return the validated data rather than the raw text.
+    return data
+
+import pandas as pd
+
+def build_question_dataframe(questions):
+    """
+    Convert question records into a table for Streamlit.
+
+    Keep the internal question ID in the index rather than
+    displaying it as an additional table column.
+    """
+
+    rows = []
+
+    for item in questions:
+        rows.append({
+            "Selected": item["selected"],
+            "Source": item["source"],
+            "Question": item["question"],
+        })
+
+    # The displayed table has exactly three columns.
+    # Question IDs remain in the internal question records.
+    return pd.DataFrame(
+        rows,
+        columns=["Selected", "Source", "Question"],
+    )
+
+def render_question_table(questions, editor_key):
+    """
+    Display a table with:
+    - An editable selection checkbox.
+    - A read-only source column.
+    - An editable question column.
+
+    Return the edited DataFrame.
+    """
+
+    df = build_question_dataframe(questions)
+
+    edited_df = st.data_editor(
+        df,
+
+        # Exactly three visible columns.
+        column_order=["Selected", "Source", "Question"],
+
+        # Configure the checkbox column.
+        column_config={
+            "Selected": st.column_config.CheckboxColumn(
+                "Selected",
+                help="Select questions to include in the quiz.",
+                default=False,
+            ),
+
+            # Users should not change a question's source here.
+            "Source": st.column_config.TextColumn(
+                "Source",
+                disabled=True,
+            ),
+
+            # Users can edit the question text directly.
+            "Question": st.column_config.TextColumn(
+                "Question",
+                help="Edit the question before starting your quiz.",
+                width="large",
+            ),
+        },
+
+        # Keep the table's number of rows fixed.
+        num_rows="fixed",
+
+        # Give each document or question bank its own editor state.
+        key=editor_key,
+
+        # Use the available container width.
+        width="stretch",
+    )
+
+    return edited_df
+
+def apply_table_edits(questions, edited_df):
+    """
+    Update question records from the edited table.
+
+    Assumes the DataFrame rows remain in the same order
+    as the question records.
+    """
+
+    if len(questions) != len(edited_df):
+        raise ValueError(
+            "The table and question bank have different row counts."
+        )
+
+    for index, item in enumerate(questions):
+
+        # Update the selection state.
+        item["selected"] = bool(
+            edited_df.iloc[index]["Selected"]
+        )
+
+        # Update the question text.
+        item["question"] = str(
+            edited_df.iloc[index]["Question"]
+        ).strip()
+
+    return questions
+

@@ -53,13 +53,6 @@ if "is_parsing" not in st.session_state:
     st.session_state.is_parsing = False
 
 # =========================================================
-# QUIZZING STATE
-# =========================================================
-
-if "is_quizzing" not in st.session_state:
-    st.session_state.is_quizzing = False
-
-# =========================================================
 # CHAT SESSION STATE
 # =========================================================
 

@@ -6,6 +6,25 @@ from datetime import datetime
 import json
 from pathlib import Path
 
+
+
+# !! need to distribute these logs !!
+'''
+functions.add_log("---log App initialization started ---") 
+functions.add_log("---log New chat button clicked ---") 
+functions.add_log("---log Chat session started ---") 
+functions.add_log("---log Chat model selected: GPT-3.5 ---") 
+functions.add_log("---log Saved chat file loaded ---") 
+functions.add_log("---log Ollama connection established (URL: http://example.com) ---") 
+functions.add_log("---log Generation parameters set: temperature=0.7, max_tokens=512, top_p=0.9, top_k=15 ---") 
+functions.add_log("---log Streaming mode enabled: True ---") 
+functions.add_log("---log Chat messages displayed ---") 
+functions.add_log("---log Chat saved successfully ---") 
+functions.add_log("---log UI elements rendered ---")
+'''
+# !!
+
+
 def chat_json_path(chat_name):
     """Return a safe JSON filename for a chat."""
     safe_name = Path(chat_name).name  # prevent names containing directory paths
@@ -153,7 +172,7 @@ for message in st.session_state.chat_messages:
 user_prompt = st.chat_input(
     f"Message {MODEL}...", 
     submit_mode="stop", 
-    disabled=not st.session_state.chat_active
+    disabled=not st.session_state.chat_active,
     #accept_file="multiple",
     #file_type=[".md", ".txt"],
     )
