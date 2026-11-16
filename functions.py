@@ -1134,3 +1134,49 @@ def apply_table_edits(questions, edited_df):
 
     return questions
 
+
+def evaluate_user_answer(
+    source_text: str,
+    question: str,
+    user_answer: str,
+    model: str,
+    ollama_url: str,
+    temperature: float,
+    max_tokens: int,
+    timeout: int,
+) -> str:
+    """
+    Ask the local Ollama model to grade the user's answer strictly against
+    the provided source document.
+    """
+    system_prompt = (
+        "You are a helpful, precise tutor. Evaluate the student's answer using ONLY "
+        "the provided source document. Clearly state:\n"
+        "1. Whether the answer is Correct, Partially Correct, or Incorrect.\n"
+        "2. What key points from the source are missing or inaccurate.\n"
+        "3. Brief, constructive feedback or clarification."
+    )
+
+    user_prompt = (
+        f"--- START SOURCE DOCUMENT ---\n{source_text}\n--- END SOURCE DOCUMENT ---\n\n"
+        f"Question: {question}\n\n"
+        f"Student's Answer: {user_answer}\n\n"
+        f"Evaluate the student's answer based on the source document above."
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "stream": False,  # Non-streaming is simpler and cleaner for per-question grading
+        "options": {
+            "temperature": temperature,
+            "num_predict": max_tokens,
+        },
+    }
+
+    response = requests.post(ollama_url, json=payload, timeout=timeout)
+    response.raise_for_status()
+    return response.json()["message"]["content"]

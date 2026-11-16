@@ -12,16 +12,20 @@ OLLAMA_HOST = st.session_state.ollama_host
 if "is_quizzing" not in st.session_state:
     st.session_state.is_quizzing = False
 
-# Question records indexed by source document.
-if "questions" not in st.session_state:
-    st.session_state.questions = {}
 
-# Track the currently active quiz.
-if "quiz_answers" not in st.session_state:
-    st.session_state.quiz_answers = {
-        "type": None,
-        "question_ids": [],
-    }
+# Store quiz data indexed by filename (str), NOT the UploadedFile object.
+# Structure:
+# {
+#   "notes.md": {
+#       "source_text": "...",
+#       "items": [
+#           {"question": "...", "user_answer": "", "feedback": None},
+#           ...
+#       ]
+#   }
+# }
+if "quiz_data" not in st.session_state:
+    st.session_state.quiz_data = {}
 
 
 # ---------------------------------------------------------
@@ -95,18 +99,13 @@ if not uploaded_files:
 
 MAX_RETRIES = 3
 if st.session_state.is_quizzing:
-    for i, filepath in enumerate(uploaded_files):
-        st.session_state.questions[filepath] = ""
+    for i, uploaded_file in enumerate(uploaded_files):
+        doc_name = uploaded_file.name
+        string_data = uploaded_file.getvalue().decode("utf-8")
+        st.session_state.quiz_data[doc_name] = {"source_text": string_data, "items": []}
+
         with st.container(border=False, key=f"quiz_cont_{i}", width="stretch"):
-            # To convert to a string based IO:
-            stringio = StringIO(filepath.getvalue().decode("utf-8"))
-            #st.write(stringio)
-
-            # To read file as string:
-            string_data = stringio.read()
-            #st.write(string_data)
-
-            st.info(f"Questions regarding {filepath.name}:")
+            st.info(f"Generating questions regarding {doc_name}...")
 
             llm_payload = (
                 f"--- START SOURCE ---\n"
@@ -128,7 +127,9 @@ if st.session_state.is_quizzing:
                     "content": llm_payload
                 }       ]
 
+            raw_response = ""
             for attempt in range(MAX_RETRIES + 1):
+                raw_response = ""  # <-- FIX: Reset accumulator on every retry!
 
                 # Reasoning display
                 st.session_state.thinking_text = ""
@@ -164,7 +165,7 @@ if st.session_state.is_quizzing:
 
                         # FINAL ANSWER
                         elif event_type == "content":
-                            st.session_state.questions[filepath] += chunk
+                            raw_response += chunk
 
                         elif event_type == "done":
                             break
@@ -181,62 +182,82 @@ if st.session_state.is_quizzing:
                     error_message = (f"⚠️ Ollama returned an error.\n\n`{e}`")
                     st.warning(error_message)
 
-                # Accept the response only if validation succeeds.
-                questions = functions.validate_questions(st.session_state.questions[filepath])
-
-                # Stop retrying once a valid response is obtained.
-                if questions is not None:
+                # Validate the response
+                validated = functions.validate_questions(raw_response)
+                if validated is not None:
                     break
 
             try:
-                # Parse it into a Python list of dicts
-                data = json.loads(st.session_state.questions[filepath])
-                st.session_state.questions[filepath] = []
-                            
-                # Iterate, extracting the "question" field for each item
-                for idx, item in enumerate(data, start=1):
-                    question = item["question"]
-                    # At this point you have the full question text
-                    # print(f"Question {idx}: {question}")
-                    # Or, inside a Streamlit app:
-                    st.write(f"Question {idx}: {question}")
-                    st.session_state.questions[filepath].append(question)
+                data = json.loads(raw_response)
+                # Save both the source context and structured question objects
+                st.session_state.quiz_data[doc_name] = {
+                    "source_text": string_data,
+                    "items": [
+                        {
+                            "question": item["question"],
+                            "user_answer": "",
+                            "feedback": None,
+                        }
+                        for item in data
+                    ],
+                }
+            except Exception as exc:  # <-- FIX: Catch Exception, not a string variable
+                st.warning(f"Could not parse questions for {doc_name}: {exc}")
 
-            except error_message:
-                st.warning("the answer was not well formatted, try again.")
-
-    st.session_state.is_quizzing = False # exist "is_quizzing" state when all answers have been produced.
-
-    # Display the editable table.
-    edited_df = functions.render_question_table(
-        questions,
-        editor_key="question_bank_editor",
-    )
-
-    # Save changes only when explicitly requested.
-    if st.button("Save changes"):
-
-        # Synchronize the edits with the question records.
-        questions = functions.apply_table_edits(questions, edited_df)
-
-        # Persist the updated question bank.
-        functions.save_question_bank(bank_path, questions)
-
-        st.success("Question bank saved.")
+        # Generation is complete; exit generation mode so reruns don't regenerate
+        st.session_state.is_quizzing = False
 
 
+# =========================================================
+# PHASE 2: INTERACTIVE QUIZ WORKSPACE (Runs on every rerun)
+# =========================================================
+if st.session_state.quiz_data:
+    for doc_name, doc_bundle in st.session_state.quiz_data.items():
+        st.subheader(f"📄 {doc_name}")
+        source_text = doc_bundle["source_text"]
 
-# Illustrative workflow for a single question.
+        for idx, item in enumerate(doc_bundle["items"], start=1):
+            # Unique prefix prevents Streamlit DuplicateWidgetID errors across files/questions
+            widget_prefix = f"{doc_name}_q_{idx}"
 
-question = selected_question["question"]
+            with st.container(border=True):
+                st.markdown(f"**Question {idx}:** {item['question']}")
 
-# Generate exactly one answer for this question.
-answer = generate_answer_with_ollama(
-    question=question,
-    source_text=source_text,
-    answer_prompt=answer_prompt,
-)
+                # 1. Space for the user to write their own answer
+                user_input = st.text_area(
+                    label="Your answer:",
+                    value=item["user_answer"],
+                    key=f"{widget_prefix}_input",
+                    height=120,
+                    placeholder="Type your answer in your own words...",
+                )
+                # Keep session state synced with what the user typed
+                item["user_answer"] = user_input
 
-# Save the generated answer in the corresponding record.
-selected_question["answer"] = answer
+                # 2. Grade the answer when the user clicks the button
+                if st.button(
+                    "Check Answer",
+                    key=f"{widget_prefix}_btn",
+                    disabled=not user_input.strip(),  # Prevent empty submissions
+                ):
+                    with st.spinner("Evaluating your answer against the source notes..."):
+                        try:
+                            feedback = functions.evaluate_user_answer(
+                                source_text=source_text,
+                                question=item["question"],
+                                user_answer=user_input,
+                                model=MODEL,
+                                ollama_url=OLLAMA_URL,
+                                temperature=0.2,  # Lower temp = more consistent grading
+                                max_tokens=MAX_TOKENS,
+                                timeout=REQUEST_TIMEOUT,
+                            )
+                            item["feedback"] = feedback
+                        except requests.exceptions.RequestException as e:
+                            st.error(f"Could not reach Ollama: {e}")
 
+                # 3. Persistently display feedback once generated
+                if item["feedback"]:
+                    st.markdown("---")
+                    st.markdown("**Tutor Feedback:**")
+                    st.info(item["feedback"])
