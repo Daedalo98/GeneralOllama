@@ -40,6 +40,7 @@ with st.container(border=False):
 
         # Did our subprocess die?
         if process is not None and process.poll() is not None:
+            functions.add_log("--- Ollama process not running ---") 
             st.session_state.ollama_process = None
             st.session_state.ollama_started_by_app = False
             process = None
@@ -59,8 +60,10 @@ with st.container(border=False):
         if ollama_running:
             if st.session_state.ollama_started_by_app:
                 st.success("Ollama is running (started by this app)")
+                functions.add_log("--- Ollama process running and started via this app ---") 
             else:
                 st.success("Ollama is running")
+                functions.add_log("--- Ollama process running but not started via this app ---") 
                 st.warning("if you want to stop Ollama, do it from outside the app. use BASH command: sudo killall -s 9 ollama")
                         
             # Add Ollama Models
@@ -72,14 +75,17 @@ with st.container(border=False):
                         models.append(m["name"])
                     # share models with all pages of the app
                     st.session_state.ollama_models = models
-            
+                    functions.add_log("--- Ollama models fetched successfully ---") 
             except Exception as e:
                 st.warning(f"Error fetching Ollama models: {e}")
+                functions.add_log("--- Error fetching Ollama models ---") 
                 pass # fail if Ollama is not running
         else:
             st.warning("Ollama is not running. Please start Ollama first.")
+            functions.add_log("--- Ollama is not running ---") 
 
             if st.button("▶ Start Ollama", width="stretch", key="start_ollama"):
+                functions.add_log("--- Start Ollama button clicked ---") 
                 try:
                     process = functions.start_ollama(
                         OLLAMA_HOST=OLLAMA_HOST,
@@ -93,6 +99,7 @@ with st.container(border=False):
                     st.rerun()
                 except Exception as e:
                     st.error(f"Failed to start Ollama: {e}")
+                    functions.add_log("--- Failed to start Ollama ---") 
 
         # Stop button
         if st.session_state.ollama_started_by_app:
@@ -101,9 +108,11 @@ with st.container(border=False):
                     functions.stop_ollama(OLLAMA_HOST, st.session_state.ollama_process)
                 except Exception as e:
                     st.warning(f"failed to stop Ollama with error: {e}")
+                    functions.add_log("--- Failed to stop Ollama ---") 
                 finally:
                     st.session_state.ollama_process = None
                     st.session_state.ollama_started_by_app = False
+                    functions.add_log("--- Ollama process stopped ---")
 
                     st.rerun()
 
@@ -177,7 +186,9 @@ with st.container(border=False):
             if new_prompt_name and new_prompt_text:
                 prompts_dict[new_prompt_name] = new_prompt_text
                 functions.save_prompt(PROMPTS_FILE, new_prompt_name, new_prompt_text)
+                functions.add_log("--- New prompt added ---") 
                 st.rerun()
             else:
                 st.warning("Please provide both a name and text for the new prompt.")
+                functions.add_log("--- Failed to add new prompt: missing name or text ---")
                 

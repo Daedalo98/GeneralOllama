@@ -154,25 +154,25 @@ with st.sidebar:
             text_idx = ollama_models.index("granite4.2:3b") if "granite4.2:3b" in ollama_models else 0
             MODEL = st.selectbox("Main Model", ollama_models, index=text_idx)
 
-            with st.expander("Chat advanced settings", expanded=False, icon="⚙️"):
+            with st.expander("Advanced settings", expanded=False, icon="⚙️"):
                 
                 # Ollama's local HTTP API.
-                OLLAMA_URL = st.text_input("CHAT Ollama URL", value=f"{OLLAMA_HOST}/api/chat")
+                OLLAMA_URL = st.text_input("Ollama URL", value=f"{OLLAMA_HOST}/api/chat", key="YT_ollama_url_input", help="The local HTTP API endpoint for Ollama. Usually http://localhost:11434/api/chat")
 
                 # Generation temperature.
                 # CHAT should generally be deterministic, so 0 is appropriate.
-                TEMPERATURE = st.number_input("CHAT Temperature", 0.0, 3.0, 0.6, 0.1, help="Higher values make output more random. For CHAT, 0 is recommended for deterministic output.")
+                TEMPERATURE = st.number_input("Temperature", 0.0, 3.0, 0.6, 0.1, help="Higher values make output more random. For CHAT, 0 is recommended for deterministic output.", key="YT_ollama_temperature")
 
                 # Maximum number of generated tokens.
-                MAX_TOKENS = st.number_input("CHAT Max Tokens", -1, 100000, 10000, 1, help="Maximum number of tokens to generate. -1 = no limit.")
+                MAX_TOKENS = st.number_input("Max Tokens", -1, 100000, 10000, 1, help="Maximum number of tokens to generate. -1 = no limit.", key="YT_ollama_max_tokens")
 
                 # HTTP timeout.
-                REQUEST_TIMEOUT = st.number_input("CHAT Request Timeout", 1, 1000, 300, 1, help="Timeout for CHAT requests in seconds.")
+                REQUEST_TIMEOUT = st.number_input("Request Timeout", 1, 1000, 300, 1, help="Timeout for requests in seconds.", key="YT_ollama_request_timeout")
 
-                STREAMING = st.toggle("Streaming Generation", value=True, key="chat_streaming", help="Whether to stream the model's output as it generates. If disabled, the model will return the full response at once.")
+                STREAMING = st.toggle("Streaming Generation", value=True, key="YT_streaming", help="Whether to stream the model's output as it generates. If disabled, the model will return the full response at once.")
 
-                TOP_P = st.number_input("Top-p", 0.0, 1.0, 0.9, 0.01, help="Top-p sampling for CHAT generation. Lower values = more focused output.")
-                TOP_K = st.number_input("Top-k", 1, 1000, 50, 1, help="Top-k sampling for CHAT generation. Lower values = more focused output.")
+                TOP_P = st.number_input("Top-p", 0.0, 1.0, 0.9, 0.01, help="Top-p sampling for generation. Lower values = more focused output.", key="YT_ollama_top_p")
+                TOP_K = st.number_input("Top-k", 1, 1000, 50, 1, help="Top-k sampling for generation. Lower values = more focused output.", key="YT_ollama_top_k")
 
                 st.subheader("System Prompts")
                 default_index = (

@@ -6,25 +6,6 @@ from datetime import datetime
 import json
 from pathlib import Path
 
-
-
-# !! need to distribute these logs !!
-'''
-functions.add_log("---log App initialization started ---") 
-functions.add_log("---log New chat button clicked ---") 
-functions.add_log("---log Chat session started ---") 
-functions.add_log("---log Chat model selected: GPT-3.5 ---") 
-functions.add_log("---log Saved chat file loaded ---") 
-functions.add_log("---log Ollama connection established (URL: http://example.com) ---") 
-functions.add_log("---log Generation parameters set: temperature=0.7, max_tokens=512, top_p=0.9, top_k=15 ---") 
-functions.add_log("---log Streaming mode enabled: True ---") 
-functions.add_log("---log Chat messages displayed ---") 
-functions.add_log("---log Chat saved successfully ---") 
-functions.add_log("---log UI elements rendered ---")
-'''
-# !!
-
-
 def chat_json_path(chat_name):
     """Return a safe JSON filename for a chat."""
     safe_name = Path(chat_name).name  # prevent names containing directory paths
@@ -58,6 +39,7 @@ with st.sidebar:
                 )
 
                 if st.button("Load Chat", key="load_chat_button"):
+                    functions.add_log("--- Load chat button clicked ---") 
                     try:
                         with open(selected_chat, "r", encoding="utf-8") as f:
                             chat_data = json.load(f)
@@ -78,10 +60,12 @@ with st.sidebar:
 
                         # Mark the chat as active if your app uses this flag.
                         st.session_state.chat_active = True
+                        functions.add_log("--- Chat loaded successfully ---") 
                         st.rerun()
 
                     except (OSError, json.JSONDecodeError, ValueError) as e:
                         st.error(f"Could not load that chat: {e}")
+                        functions.add_log("--- Load chat button failed ---") 
             else:
                 st.caption("No reloadable chats found.")
 
@@ -268,14 +252,17 @@ if user_prompt:
         except requests.exceptions.Timeout:
             error_message = ("⚠️ The request to Ollama timed out.")
             answer_placeholder.error(error_message)
+            functions.add_log("--- Request to Ollama timed out ---") 
 
         except requests.exceptions.RequestException as e:
             error_message = (f"⚠️ Could not connect to Ollama.\n\n '{e}'")
             answer_placeholder.error(error_message)
+            functions.add_log("--- Could not connect to Ollama ---")
 
         except Exception as e:
             error_message = (f"⚠️ Ollama returned an error.\n\n'{e}'")
             answer_placeholder.error(error_message)
+            functions.add_log("--- Ollama returned an error ---") 
 
 # add buttons to stop chatting or save the chat
 col1, col2 = st.columns(2)
@@ -294,6 +281,7 @@ with col2:
         help="remember to give an appropriate name to the chat!")
     
 if new_chat:
+    functions.add_log("--- New chat button clicked ---")
     st.session_state.chat_start = True
     st.session_state.chat_active = True
     st.session_state.chat_messages = []
@@ -301,6 +289,7 @@ if new_chat:
     st.rerun()
 
 if save_chat:
+    functions.add_log("--- Save chat button clicked ---") 
     if not st.session_state.chat_active:
         st.warning("There is no active chat to save.")
     elif not st.session_state.chat_messages:
@@ -326,5 +315,6 @@ if save_chat:
         with open(chat_json_path(CHAT_NAME), "w", encoding="utf-8") as f:
             json.dump(chat_data, f, ensure_ascii=False, indent=2)
 
+        functions.add_log("--- Chat saved successfully ---")
         st.toast("Chat saved!", icon="✅")
 

@@ -107,8 +107,9 @@ def make_inventory(
 
         rows.append(
             {
-                "Select": False,  # Filled from saved/session selection below.
+                "Select": False,
                 "File name": pdf_path.name,
+                "Source (DOI or URL)": "None",  # <-- ADD THIS: Default value so the column exists in the DataFrame
                 "Relative path": str(relative_path),
                 "Pages": page_count,
                 "PDF status": page_status,
@@ -146,8 +147,11 @@ def get_selected_pdfs(file_or_list, pdf_folder, isfile):
         if not record.get("selected", False):
             continue
 
+        # In get_selected_pdfs():
         relative_path = Path(record["pdf_path"])
-        source = record["Source"]
+        # Safely read Source; normalize empty/null values to "None"
+        raw_source = record.get("Source")
+        source = str(raw_source).strip() if raw_source and str(raw_source).strip() else "None"
 
         # Inventory paths should be relative, never absolute.
         if relative_path.is_absolute():
@@ -277,14 +281,20 @@ saved_selection = functions.load_json_as_booldict(selection_file)
 session_selection = st.session_state.get("file_selection", {})
 selection: dict[str, bool] = {**saved_selection, **session_selection}
 
+# Initialize or retrieve the persistent source map
+source_map: dict[str, str] = st.session_state.get("file_sources", {})
+
 if not inventory.empty:
     for _, row in inventory.iterrows():
         key = row["_key"]
         if key not in selection:
-            # Default to selecting files that do not appear to be parsed.
             selection[key] = not str(row["Parse status"]).startswith("Parsed")
+        # Default to "None" if no source has been entered yet
+        if key not in source_map:
+            source_map[key] = "None"
 
     inventory["Select"] = inventory["_key"].map(selection).fillna(False).astype(bool)
+    inventory["Source (DOI or URL)"] = inventory["_key"].map(source_map).fillna("None").astype(str)
 
 # Summary metrics refer to the full inventory, not the filtered table.
 pdf_count = len(inventory)
@@ -397,24 +407,45 @@ edited = st.data_editor(
         ),
         "Source (DOI or URL)": st.column_config.TextColumn(
             "Add source for future references",
+            default="None",
             help="Manually add source now, so later it will be automatically referenced."
         ),
         "Pages": st.column_config.NumberColumn("Pages", format="%d"),
         "_key": None,
+        #"default": "None"
     },
     key="inventory_table",
 )
 
 # Apply edits to the complete selection map, including rows hidden by filters.
 for _, row in edited.iterrows():
-    selection[row["_key"]] = bool(row["Select"])
+    key = row["_key"]
+    selection[key] = bool(row["Select"])
+    
+    # Clean whitespace; if the user cleared the cell, normalize back to "None"
+    raw_source = str(row.get("Source (DOI or URL)", "")).strip()
+    source_map[key] = raw_source if raw_source else "None"
 
 st.session_state.file_selection = selection
+st.session_state.file_sources = source_map  # <-- Persist across reruns
 functions.save_booldict_as_json(selection_file, selection)
 
 selected_rows = inventory[inventory["_key"].map(selection).fillna(False)]
 st.subheader("Selected files")
 st.write(f"{len(selected_rows)} files · {int(selected_rows['Pages'].dropna().sum())} pages")
+
+# Export the selection for use by a separate parsing script or app.
+export_rows = [
+    {
+        "pdf_path": row["Relative path"],
+        "selected": bool(selection.get(row["_key"], False)),
+        "pages": row["Pages"] if pd.notna(row["Pages"]) else None,
+        "parse_status": row["Parse status"],
+        "markdown_path": row["Markdown path"],
+        "Source": row["Source (DOI or URL)"]
+    }
+    for _, row in inventory.iterrows()
+]
 
 if selected_rows.empty:
     st.write("No files are selected.")
@@ -428,19 +459,6 @@ else:
         hide_index=True,
         width="stretch",
     )
-
-    # Export the selection for use by a separate parsing script or app.
-    export_rows = [
-        {
-            "pdf_path": row["Relative path"],
-            "selected": bool(selection.get(row["_key"], False)),
-            "pages": row["Pages"] if pd.notna(row["Pages"]) else None,
-            "parse_status": row["Parse status"],
-            "markdown_path": row["Markdown path"],
-            "Source": row["Source (DOI or URL)"]
-        }
-        for _, row in inventory.iterrows()
-    ]
 
     col1, col2 = st.columns([1.5, 1], gap="small", border=False, width="stretch")
     with col1:
@@ -500,7 +518,12 @@ if st.button(
 
         # Save paths in session state. Streamlit reruns the script after
         # interactions, so don't rely on a local variable from a previous run.
-        st.session_state.parse_queue = [[str(path), source] for [path, source] in [selected_pdfs, sources]]
+        ## st.session_state.parse_queue = [[str(path), source] for [path, source] in [selected_pdfs, sources]] ##
+
+        # Use zip() to pair each path with its corresponding source
+        st.session_state.parse_queue = [
+            (str(path), source) for path, source in zip(selected_pdfs, sources)
+        ]
 
         functions.add_log(f"selected {len(selected_pdfs)} PDF file(s)")
         functions.add_log("parsing process started.")
@@ -516,10 +539,10 @@ if st.button(
         )
 
         
-
 if st.session_state.is_parsing:
-    for idx, filepath in enumerate(parse_queue, start=1):
-        filepath = Path(filepath)
+    # Unpack both filepath and source from each queue item
+    for idx, (filepath_str, source) in enumerate(parse_queue, start=1):
+        filepath = Path(filepath_str)
 
         # ---- Process the file ----
         pages = functions.convert_from_path(
@@ -530,6 +553,9 @@ if st.session_state.is_parsing:
         )
 
         all_markdown = []
+        source_md = f"<!-- Source: {source} -->\n\n" if source and source != "None" else ""
+        all_markdown.append(source_md)
+        
         source_root = Path(PDF_FOLDER).expanduser().resolve()
         output_root = Path(MD_FOLDER).expanduser().resolve()
 
