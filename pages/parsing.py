@@ -658,12 +658,12 @@ if st.session_state.is_parsing:
         # WRITE OUTPUT FILE
         # Build clean YAML frontmatter with document metadata
         frontmatter_lines = [
-            "---",
+            "--- METADATA ---",
             f'source_file: "{relative_pdf.as_posix()}"',
-            f'doi: "{doi}"',
-            f'url: "{url}"',
+            f'DOI: "{doi}"',
+            f'URL: "{url}"',
             f"pages: {len(pages)}",
-            "---",
+            "--- METADATA ---",
         ]
         frontmatter = "\n".join(frontmatter_lines)
 
