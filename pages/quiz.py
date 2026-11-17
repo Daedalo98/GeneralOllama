@@ -19,7 +19,7 @@ if "is_quizzing" not in st.session_state:
 #   "notes.md": {
 #       "source_text": "...",
 #       "items": [
-#           {"question": "...", "user_answer": "", "feedback": None},
+#           {"question": "...", "user_answer": "", "graded_answer": None, "feedback": None},
 #           ...
 #       ]
 #   }
@@ -193,12 +193,13 @@ if st.session_state.is_quizzing:
                 st.session_state.quiz_data[doc_name] = {
                     "source_text": string_data,
                     "items": [
-                        {
-                            "question": item["question"],
-                            "user_answer": "",
-                            "feedback": None,
-                        }
-                        for item in data
+                    {
+                        "question": item["question"],
+                        "user_answer": "",
+                        "graded_answer": None,  # Tracks the exact answer text last evaluated
+                        "feedback": None,
+                    }
+                    for item in data
                     ],
                 }
             except Exception as exc:  # <-- FIX: Catch Exception, not a string variable
@@ -253,6 +254,8 @@ if st.session_state.quiz_data:
                                 timeout=REQUEST_TIMEOUT,
                             )
                             item["feedback"] = feedback
+                            item["graded_answer"] = user_input.strip()  # <-- Mark this version as graded
+
                         except requests.exceptions.RequestException as e:
                             st.error(f"Could not reach Ollama: {e}")
 
@@ -261,3 +264,56 @@ if st.session_state.quiz_data:
                     st.markdown("---")
                     st.markdown("**Tutor Feedback:**")
                     st.info(item["feedback"])
+                    
+
+
+        # =========================================================
+        # BATCH GRADING: "Check All Answers" for this document
+        # Placed AFTER the question loop so item["user_answer"]
+        # already holds the latest text from every st.text_area.
+        # =========================================================
+
+        # Select ONLY questions that have a non-empty answer AND haven't been graded in their current form
+        pending_items = [
+            (idx, item)
+            for idx, item in enumerate(doc_bundle["items"], start=1)
+            if item["user_answer"].strip()
+            and item["user_answer"].strip() != item.get("graded_answer")
+        ]
+
+        if st.button(
+            f"Check Remaining Answers for {doc_name} ({len(pending_items)} pending)",
+            key=f"{doc_name}_check_all_btn",
+            type="primary",
+            disabled=len(pending_items) == 0,  # Disabled if everything typed is already graded
+            use_container_width=True,
+        ):
+            progress_bar = st.progress(0, text="Starting batch evaluation...")
+            total_to_grade = len(pending_items)
+
+            for step, (idx, item) in enumerate(pending_items, start=1):
+                progress_bar.progress(
+                    int(((step - 1) / total_to_grade) * 100),
+                    text=f"Evaluating Question {idx} ({step} of {total_to_grade})...",
+                )
+
+                try:
+                    feedback = functions.evaluate_user_answer(
+                        source_text=source_text,
+                        question=item["question"],
+                        user_answer=item["user_answer"],
+                        model=MODEL,
+                        ollama_url=OLLAMA_URL,
+                        temperature=0.2,
+                        max_tokens=MAX_TOKENS,
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                    item["feedback"] = feedback
+                    item["graded_answer"] = item["user_answer"].strip()  # <-- Mark as graded
+
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Error evaluating Question {idx}: {e}")
+                    break
+
+            progress_bar.progress(100, text="All pending answers evaluated!")
+            st.rerun()

@@ -109,7 +109,8 @@ def make_inventory(
             {
                 "Select": False,
                 "File name": pdf_path.name,
-                "Source (DOI or URL)": "None",  # <-- ADD THIS: Default value so the column exists in the DataFrame
+                "Source URL": "None",
+                "Source DOI": "None",
                 "Relative path": str(relative_path),
                 "Pages": page_count,
                 "PDF status": page_status,
@@ -141,17 +142,19 @@ def get_selected_pdfs(file_or_list, pdf_folder, isfile):
     source_root = Path(pdf_folder).expanduser().resolve()
 
     selected_paths = []
-    sources = []
+    sources = []  # Will hold tuples of (doi, url)
 
     for record in records:
         if not record.get("selected", False):
             continue
 
-        # In get_selected_pdfs():
         relative_path = Path(record["pdf_path"])
-        # Safely read Source; normalize empty/null values to "None"
-        raw_source = record.get("Source")
-        source = str(raw_source).strip() if raw_source and str(raw_source).strip() else "None"
+
+        # Read both fields safely and normalize blanks to "None"
+        raw_doi = record.get("Source DOI")
+        raw_url = record.get("Source URL")
+        doi = str(raw_doi).strip() if raw_doi and str(raw_doi).strip() else "None"
+        url = str(raw_url).strip() if raw_url and str(raw_url).strip() else "None"
 
         # Inventory paths should be relative, never absolute.
         if relative_path.is_absolute():
@@ -168,7 +171,7 @@ def get_selected_pdfs(file_or_list, pdf_folder, isfile):
             continue
 
         selected_paths.append(pdf_path)
-        sources.append(source)
+        sources.append((doi, url))  # <-- Pair DOI and URL together
 
     return selected_paths, sources
 
@@ -282,19 +285,21 @@ session_selection = st.session_state.get("file_selection", {})
 selection: dict[str, bool] = {**saved_selection, **session_selection}
 
 # Initialize or retrieve the persistent source map
-source_map: dict[str, str] = st.session_state.get("file_sources", {})
+# Each key maps to {"doi": "...", "url": "..."}
+source_map: dict[str, dict[str, str]] = st.session_state.get("file_sources", {})
 
 if not inventory.empty:
     for _, row in inventory.iterrows():
         key = row["_key"]
         if key not in selection:
             selection[key] = not str(row["Parse status"]).startswith("Parsed")
-        # Default to "None" if no source has been entered yet
         if key not in source_map:
-            source_map[key] = "None"
+            source_map[key] = {"doi": "None", "url": "None"}
 
     inventory["Select"] = inventory["_key"].map(selection).fillna(False).astype(bool)
-    inventory["Source (DOI or URL)"] = inventory["_key"].map(source_map).fillna("None").astype(str)
+    # Map each column to its own field inside source_map
+    inventory["Source DOI"] = inventory["_key"].map(lambda k: source_map.get(k, {}).get("doi", "None"))
+    inventory["Source URL"] = inventory["_key"].map(lambda k: source_map.get(k, {}).get("url", "None"))
 
 # Summary metrics refer to the full inventory, not the filtered table.
 pdf_count = len(inventory)
@@ -384,7 +389,8 @@ st.caption(
 display_columns = [
     "Select",
     "File name",
-    "Source (DOI or URL)", ###
+    "Source DOI", ###
+    "Source URL",
     "Relative path",
     "Pages",
     "PDF status",
@@ -398,17 +404,22 @@ edited = st.data_editor(
     visible[cols_to_select],
     hide_index=True,
     width="stretch",
-    disabled=[column for column in display_columns if column not in ["Select", "Source (DOI or URL)"]]
+    disabled=[column for column in display_columns if column not in ["Select", "Source DOI", "Source URL"]]
     + ["_key"],
     column_config={
         "Select": st.column_config.CheckboxColumn(
             "Select for parsing",
             help="This only controls selection; it does not start parsing.",
         ),
-        "Source (DOI or URL)": st.column_config.TextColumn(
-            "Add source for future references",
+        "Source DOI": st.column_config.TextColumn(
+            "Source DOI",
             default="None",
-            help="Manually add source now, so later it will be automatically referenced."
+            help="Enter the DOI for the source document."
+        ),
+        "Source URL": st.column_config.TextColumn(
+            "Source URL",
+            default="None",
+            help="Enter the URL for the source document."
         ),
         "Pages": st.column_config.NumberColumn("Pages", format="%d"),
         "_key": None,
@@ -421,10 +432,16 @@ edited = st.data_editor(
 for _, row in edited.iterrows():
     key = row["_key"]
     selection[key] = bool(row["Select"])
-    
-    # Clean whitespace; if the user cleared the cell, normalize back to "None"
-    raw_source = str(row.get("Source (DOI or URL)", "")).strip()
-    source_map[key] = raw_source if raw_source else "None"
+
+    # Normalize empty cells independently so DOI and URL never overwrite each other
+    doi_val = str(row.get("Source DOI", "")).strip()
+    url_val = str(row.get("Source URL", "")).strip()
+
+    source_map[key] = {
+        "doi": doi_val if doi_val else "None",
+        "url": url_val if url_val else "None",
+    }
+
 
 st.session_state.file_selection = selection
 st.session_state.file_sources = source_map  # <-- Persist across reruns
@@ -442,7 +459,8 @@ export_rows = [
         "pages": row["Pages"] if pd.notna(row["Pages"]) else None,
         "parse_status": row["Parse status"],
         "markdown_path": row["Markdown path"],
-        "Source": row["Source (DOI or URL)"]
+        "Source DOI": row["Source DOI"],
+        "Source URL": row["Source URL"]
     }
     for _, row in inventory.iterrows()
 ]
@@ -521,8 +539,10 @@ if st.button(
         ## st.session_state.parse_queue = [[str(path), source] for [path, source] in [selected_pdfs, sources]] ##
 
         # Use zip() to pair each path with its corresponding source
+        # Store 3-tuples: (filepath_str, doi, url)
         st.session_state.parse_queue = [
-            (str(path), source) for path, source in zip(selected_pdfs, sources)
+            (str(path), doi, url)
+            for path, (doi, url) in zip(selected_pdfs, sources)
         ]
 
         functions.add_log(f"selected {len(selected_pdfs)} PDF file(s)")
@@ -537,11 +557,19 @@ if st.button(
             value=0,
             text=f"Parsing {len(parse_queue)} selected PDF file(s)",
         )
-
+    else:
+        st.error("Ollama is not running or the selected model is not available. Please check your settings.")
         
 if st.session_state.is_parsing:
-    # Unpack both filepath and source from each queue item
-    for idx, (filepath_str, source) in enumerate(parse_queue, start=1):
+    parse_queue = st.session_state.get("parse_queue", [])
+    start_time = time.time()
+    pdf_progress = st.progress(
+        value=0,
+        text=f"Parsing {len(parse_queue)} selected PDF file(s)",
+    )
+
+    # Unpack all three values per queued file
+    for idx, (filepath_str, doi, url) in enumerate(parse_queue, start=1):
         filepath = Path(filepath_str)
 
         # ---- Process the file ----
@@ -553,8 +581,6 @@ if st.session_state.is_parsing:
         )
 
         all_markdown = []
-        source_md = f"<!-- Source: {source} -->\n\n" if source and source != "None" else ""
-        all_markdown.append(source_md)
         
         source_root = Path(PDF_FOLDER).expanduser().resolve()
         output_root = Path(MD_FOLDER).expanduser().resolve()
@@ -630,7 +656,23 @@ if st.session_state.is_parsing:
             page_progress.progress(int(page_number*100/len(pages)), text=f"Processed page {page_number}/{len(pages)} \n\nRemaining time: (approx) {page_remaining_time_text}")
 
         # WRITE OUTPUT FILE
-        combined_markdown = ("\n\n---\n\n".join(all_markdown))
+        # Build clean YAML frontmatter with document metadata
+        frontmatter_lines = [
+            "---",
+            f'source_file: "{relative_pdf.as_posix()}"',
+            f'doi: "{doi}"',
+            f'url: "{url}"',
+            f"pages: {len(pages)}",
+            "---",
+        ]
+        frontmatter = "\n".join(frontmatter_lines)
+
+        # Join only the actual page contents with horizontal rules
+        body_markdown = "\n\n---\n\n".join(all_markdown)
+
+        # Combine frontmatter + body cleanly
+        combined_markdown = f"{frontmatter}\n\n{body_markdown}"
+
         with output_md_path.open("w", encoding="utf-8") as output_file:
             output_file.write(combined_markdown)
 
