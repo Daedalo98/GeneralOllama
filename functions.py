@@ -11,6 +11,7 @@ from typing import List, Tuple
 from pathlib import Path
 
 import psutil
+from traitlets import Bool
 ## da fare il grafico delle performance dell'hardware
 
 # ---------------------------------------------------------
@@ -645,7 +646,7 @@ def stream_ollama_chat(
     timeout: int,
     top_p: float,
     top_k: int,
-    thinking=True,
+    thinking: Bool,
 ):
     """
     Stream a chat response from Ollama.
@@ -1034,6 +1035,7 @@ def evaluate_user_answer(
     question: str,
     user_answer: str,
     model: str,
+    system_prompt: str,
     ollama_url: str,
     temperature: float,
     max_tokens: int,
@@ -1043,19 +1045,12 @@ def evaluate_user_answer(
     Ask the local Ollama model to grade the user's answer strictly against
     the provided source document.
     """
-    system_prompt = (
-        "You are a helpful, precise tutor. Evaluate the student's answer using ONLY "
-        "the provided source document. Clearly state:\n"
-        "1. Whether the answer is Correct, Partially Correct, or Incorrect.\n"
-        "2. What key points from the source are missing or inaccurate.\n"
-        "3. Brief, constructive feedback or clarification."
-    )
 
     user_prompt = (
         f"--- START SOURCE DOCUMENT ---\n{source_text}\n--- END SOURCE DOCUMENT ---\n\n"
         f"Question: {question}\n\n"
-        f"Student's Answer: {user_answer}\n\n"
-        f"Evaluate the student's answer based on the source document above."
+        f"Answer: {user_answer}\n\n"
+        f"Evaluate the answer based on the source document above."
     )
 
     payload = {

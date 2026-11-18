@@ -25,3 +25,6 @@ tiktoken
 trafilatura
 
 pyzotero
+
+beautifulsoup4 
+markdownify

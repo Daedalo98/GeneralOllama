@@ -50,41 +50,56 @@ with st.sidebar:
                 text_idx = ollama_models.index("granite4.2:3b") if "granite4.2:3b" in ollama_models else 0
                 MODEL = st.selectbox("Main Model", ollama_models, index=text_idx)
     
-                with st.expander("Chat advanced settings", expanded=False, icon="⚙️"):
+                with st.expander("Questions-Generation advanced settings", expanded=False, icon="⚙️"):
                     
                     # Ollama's local HTTP API.
-                    OLLAMA_URL = st.text_input("CHAT Ollama URL", value=f"{OLLAMA_HOST}/api/chat")
-    
-                    # Generation temperature.
-                    # CHAT should generally be deterministic, so 0 is appropriate.
-                    TEMPERATURE = st.number_input("CHAT Temperature", 0.0, 3.0, 0.6, 0.1, help="Higher values make output more random. For CHAT, 0 is recommended for deterministic output.")
-    
+                    OLLAMA_URL = st.text_input("Ollama URL", value=f"{OLLAMA_HOST}/api/chat", key="quiz_ollama_url", help="Local Ollama API endpoint. Usually http://localhost:11434/api/chat")
+
                     # Maximum number of generated tokens.
-                    MAX_TOKENS = st.number_input("CHAT Max Tokens", -1, 100000, 10000, 1, help="Maximum number of tokens to generate. -1 = no limit.")
+                    MAX_TOKENS = st.number_input("Max Tokens", -1, 100000, 10000, 1, key="quiz_max_tokens", help="Maximum number of tokens to generate. -1 = no limit.")
     
                     # HTTP timeout.
-                    REQUEST_TIMEOUT = st.number_input("CHAT Request Timeout", 1, 1000, 300, 1, help="Timeout for CHAT requests in seconds.")
+                    REQUEST_TIMEOUT = st.number_input("Request Timeout", 1, 1000, 300, 1, key="quiz_request_timeout", help="Timeout for CHAT requests in seconds.")
     
-                    STREAMING = st.toggle("Streaming Generation", value=True, key="chat_streaming", help="Whether to stream the model's output as it generates. If disabled, the model will return the full response at once.")
-    
-                    TOP_P = st.number_input("Top-p", 0.0, 1.0, 0.9, 0.01, help="Top-p sampling for CHAT generation. Lower values = more focused output.")
-                    TOP_K = st.number_input("Top-k", 1, 1000, 50, 1, help="Top-k sampling for CHAT generation. Lower values = more focused output.")
-    
-                    st.subheader("System Prompts")
-                    default_index = (
+                    TOP_P = st.number_input("Top-p", 0.0, 1.0, 0.9, 0.01, key="quiz_top_p", help="Top-p sampling for CHAT generation. Lower values = more focused output.")
+                    TOP_K = st.number_input("Top-k", 1, 1000, 50, 1, key="quiz_top_k", help="Top-k sampling for CHAT generation. Lower values = more focused output.")
+
+
+                    st.subheader("Temperature Settings", help="Temperature controls randomness in generation. Lower = more deterministic, Higher = more creative.")
+                    QUIZ_TEMPERATURE = st.number_input("Questioning Model's Temperature", 0.0, 3.0, 0.6, 0.1, key="quiz_temperature", help="Higher values make output more random. For questioning, high T is recommended for non-deterministic output.")
+                    ANSWRS_TEMPERATURE = st.number_input("Answering Model's Temperature", 0.0, 3.0, 0.2, 0.1, key="answer_temperature", help="Higher values make output more random. For answering, lower T is recommended for deterministic output.")
+                    
+                    st.subheader("System Prompts", help="Select the system prompt to use for generating questions and answers. You can edit prompts in the 'Settings' page.")
+                    
+                    quiz_default_index = (
                         prompt_names.index("QUIZ_questions")
                         if "QUIZ_questions" in prompt_names else 0)
     
-                    prompt_name = st.selectbox(
+                    quiz_prompt_name = st.selectbox(
                         "Active Prompt",
                         options=prompt_names,
-                        index=default_index,
-                        key="quiz_prompt_selector"
+                        index=quiz_default_index,
+                        key="quiz_prompt"
                     )
     
-                    quiz_prompt_text = st.session_state.prompts_dict.get(prompt_name,"")
+                    quiz_prompt_text = st.session_state.prompts_dict.get(quiz_prompt_name,"")
                     # show the prompt
                     st.text(quiz_prompt_text)
+
+                    answer_default_index = (
+                        prompt_names.index("QUIZ_answers")
+                        if "QUIZ_answers" in prompt_names else 0)
+
+                    answer_prompt_name = st.selectbox(
+                        "Active Prompt",
+                        options=prompt_names,
+                        index=answer_default_index,
+                        key="answer_prompt"
+                    )
+
+                    answer_prompt_text = st.session_state.prompts_dict.get(answer_prompt_name,"")
+                    # show the prompt
+                    st.text(answer_prompt_text)
 
             if st.button("Start QUIZ", 
                          #disabled=st.session_state.is_parsing, 
@@ -142,12 +157,12 @@ if st.session_state.is_quizzing:
                         messages=ollama_messages,
                         ollama_url=OLLAMA_URL,
                         model=MODEL,
-                        temperature=TEMPERATURE,
+                        temperature=QUIZ_TEMPERATURE,
                         max_tokens=MAX_TOKENS,
                         timeout=REQUEST_TIMEOUT,
                         top_p=TOP_P,
                         top_k=TOP_K,
-                        thinking=True # Enable Ollama thinking.
+                        thinking=True 
                         ):
 
                         event_type = event["type"]
@@ -235,37 +250,12 @@ if st.session_state.quiz_data:
                 # Keep session state synced with what the user typed
                 item["user_answer"] = user_input
 
-                # 2. Grade the answer when the user clicks the button
-                if st.button(
-                    "Check Answer",
-                    key=f"{widget_prefix}_btn",
-                    disabled=not user_input.strip(),  # Prevent empty submissions
-                ):
-                    with st.spinner("Evaluating your answer against the source notes..."):
-                        try:
-                            feedback = functions.evaluate_user_answer(
-                                source_text=source_text,
-                                question=item["question"],
-                                user_answer=user_input,
-                                model=MODEL,
-                                ollama_url=OLLAMA_URL,
-                                temperature=0.2,  # Lower temp = more consistent grading
-                                max_tokens=MAX_TOKENS,
-                                timeout=REQUEST_TIMEOUT,
-                            )
-                            item["feedback"] = feedback
-                            item["graded_answer"] = user_input.strip()  # <-- Mark this version as graded
-
-                        except requests.exceptions.RequestException as e:
-                            st.error(f"Could not reach Ollama: {e}")
-
-                # 3. Persistently display feedback once generated
+                # Persistently display feedback once generated
                 if item["feedback"]:
                     st.markdown("---")
                     st.markdown("**Tutor Feedback:**")
                     st.info(item["feedback"])
-                    
-
+        
 
         # =========================================================
         # BATCH GRADING: "Check All Answers" for this document
@@ -303,8 +293,9 @@ if st.session_state.quiz_data:
                         question=item["question"],
                         user_answer=item["user_answer"],
                         model=MODEL,
+                        system_prompt=answer_prompt_text,
                         ollama_url=OLLAMA_URL,
-                        temperature=0.2,
+                        temperature=ANSWRS_TEMPERATURE,
                         max_tokens=MAX_TOKENS,
                         timeout=REQUEST_TIMEOUT,
                     )
